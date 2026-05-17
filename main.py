@@ -1,3 +1,5 @@
+"""Download a Cafeyn issue from a reader URL and export it as a PDF."""
+
 import argparse
 import os
 import re
@@ -7,19 +9,21 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 from pathlib import Path
 
+import curl_cffi
+from dotenv import load_dotenv
+from PIL import Image
+
 # AWS ELB in front of api.cafeyn.co does TLS-fingerprint filtering, so we
 # impersonate a real Chrome to avoid 404s from the ELB layer that never
 # reach the Kestrel backend.
 TLS_IMPERSONATE = "chrome131"
-import curl_cffi
-from dotenv import load_dotenv
-from PIL import Image
 
 try:
     from tqdm import tqdm
 except ImportError:
 
-    def tqdm(iterable, **kwargs):
+    def tqdm(iterable, **_kwargs):
+        """Fallback tqdm implementation when tqdm is unavailable."""
         return iterable
 
 
@@ -30,12 +34,14 @@ USER_AGENT = (
 
 
 def sanitize_filename(value):
+    """Convert a string to a safe filename."""
     value = re.sub(r'[\\/:*?"<>|]+', "_", value)
     value = re.sub(r"\s+", " ", value).strip()
     return value
 
 
 def parse_reader_url(reader_url):
+    """Validate and parse a Cafeyn reader URL."""
     match = re.search(r"/ticket/reader/(\d+)/(\d+)", reader_url)
     if not match:
         raise ValueError(
@@ -46,6 +52,7 @@ def parse_reader_url(reader_url):
 
 
 def get_env(name):
+    """Read a required environment variable."""
     value = os.getenv(name)
     if not value:
         raise ValueError(f"Missing required env variable: {name}")
@@ -53,6 +60,7 @@ def get_env(name):
 
 
 def fetch_ticket(reader_url, jwt_token, websessionid):
+    """Retrieve a temporary ticket from the reader endpoint."""
     headers = {
         "accept": "application/json",
         "accesskeyid": "123456",
@@ -67,6 +75,7 @@ def fetch_ticket(reader_url, jwt_token, websessionid):
 
 
 def fetch_material(ticket):
+    """Fetch issue metadata and page/tile information."""
     headers = {
         "accept": "application/json, text/plain, */*",
         "user-agent": USER_AGENT,
@@ -81,6 +90,7 @@ def fetch_material(ticket):
 
 
 def apply_tile_transformation(image, transformation):
+    """Apply Cafeyn tile transform (vertical flip then rotation)."""
     rotation, flip = transformation
 
     if flip:
@@ -93,6 +103,7 @@ def apply_tile_transformation(image, transformation):
 
 
 def download_and_construct_image(page_data, hosts_base, ticket_value, max_workers):
+    """Download all tiles for one page and merge them into a single image."""
     hd = page_data["hd"]
     path = hd["path"]
     tile_col_count = hd["tile_col_count"]
@@ -112,7 +123,6 @@ def download_and_construct_image(page_data, hosts_base, ticket_value, max_worker
         dl_url = hosts_base + ticket_value + f"/{tile_path}"
         transformation = transformations.get(tile_name)
 
-        # print(f"Downloading tile {row + 1},{col + 1}/{tile_row_count},{tile_col_count}: {tile_name}")
         response = curl_cffi.get(dl_url, impersonate=TLS_IMPERSONATE)
         response.raise_for_status()
         tile_image = Image.open(BytesIO(response.content)).convert("RGBA")
@@ -152,6 +162,7 @@ def download_and_construct_image(page_data, hosts_base, ticket_value, max_worker
 
 
 def build_pdf(material_data, output_dir, ticket, max_workers):
+    """Render all pages and write the final PDF to disk."""
     publication_date = material_data["metadata"]["publication_date"]
     publication_title = material_data["metadata"]["title"]
     hosts = material_data["hosts"]["pages"]
@@ -190,6 +201,7 @@ def build_pdf(material_data, output_dir, ticket, max_workers):
 
 
 def main():
+    """Parse CLI args, load credentials, and run the download pipeline."""
     load_dotenv()
 
     parser = argparse.ArgumentParser(
@@ -222,7 +234,6 @@ def main():
     if not reader_url:
         raise ValueError("Reader URL is required.")
 
-    # Validate format early so user errors fail fast.
     parse_reader_url(reader_url)
 
     jwt_token = get_env("JWT_TOKEN")
