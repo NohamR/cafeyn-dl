@@ -1,0 +1,17 @@
+[project]
+name = "cafeyn-dl"
+version = "0.1.0"
+description = "A python script to download magazines from Cafeyn."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "curl-cffi>=0.15.0",
+    "pillow>=12.2.0",
+    "python-dotenv>=1.2.2",
+    "tqdm>=4.67.3",
+]
+
+[dependency-groups]
+dev = [
+    "pylint>=4.0.5",
+]
