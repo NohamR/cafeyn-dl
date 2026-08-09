@@ -5,7 +5,7 @@ description = "A python script to download magazines from Cafeyn."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "curl-cffi>=0.15.0",
+    "curl-cffi>=0.16.0",
     "pillow>=12.3.0",
     "python-dotenv>=1.2.2",
     "tqdm>=4.70.0",
